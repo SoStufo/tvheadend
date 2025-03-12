@@ -17,7 +17,7 @@ jobs:
     # Run steps on a matrix
     strategy:
       matrix:
-       arch: [ aarch64 ]
+       arch: [ armv7, aarch64 ]
        distro: [ trixie ]
 
     steps:
