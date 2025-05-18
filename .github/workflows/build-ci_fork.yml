@@ -1,0 +1,114 @@
+name: Build Tvheadend CI - Fork
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  build-crosscompile:
+    # The host should always be linux
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    name: Build on ${{ matrix.distro }} ${{ matrix.arch }}
+    # Run steps on a matrix
+    strategy:
+      matrix:
+       arch: [ armv7, aarch64 ]
+       distro: [ trixie ]
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - uses: SoStufo/run-on-arch-action@v3
+        name: Build artifact
+        id: build
+        with:
+          arch: ${{ matrix.arch }}
+          distro: ${{ matrix.distro }}
+
+          # Not required, but speeds up builds
+          githubToken: ${{ github.token }}
+
+          # Create an artifacts directory
+          setup: |
+            mkdir -p "${PWD}/artifacts"
+
+          # Mount the artifacts directory as /artifacts in the container
+          dockerRunArgs: |
+            --volume "${PWD}/artifacts:/artifacts"
+
+          # Pass some environment variables to the container
+          env: | # YAML, but pipe character is necessary
+            artifact_name: git-${{ matrix.distro }}_${{ matrix.arch }}
+
+
+          # The shell to run commands with in the container
+          shell: /bin/sh
+
+          # Install some dependencies in the container. This speeds up builds if
+          # you are also using githubToken. Any dependencies installed here will
+          # be part of the container image that gets cached, so subsequent
+          # builds don't have to re-install them. The image layer is cached
+          # publicly in your project's package repository, so it is vital that
+          # no secrets are present in the container state or logs.
+          install: |
+            if [ '${{ matrix.distro }}' = 'jessie' ]; then sed -i 's/archive.raspbian.org/legacy.raspbian.org/g' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'jessie' ]; then sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'jessie' ]; then sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'jessie' ]; then sed -i '/jessie-updates/d' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'stretch' ]; then sed -i 's/archive.raspbian.org/legacy.raspbian.org/g' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'stretch' ]; then sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'stretch' ]; then sed -i 's/security.debian.org/archive.debian.org/g' /etc/apt/sources.list; fi
+            if [ '${{ matrix.distro }}' = 'stretch' ]; then sed -i '/stretch-updates/d' /etc/apt/sources.list; fi
+            case "${{ matrix.distro }}" in
+              ubuntu*|jessie|stretch|buster|bullseye|bookworm|trixie)
+                apt-get update -y
+                DEBIAN_FRONTEND=noninteractive apt-get install --force-yes -y cmake git build-essential pkg-config gettext libavahi-client-dev libssl-dev zlib1g-dev wget bzip2 git-core liburiparser-dev libdvbcsa-dev python3 python3-requests debhelper ccache lsb-release libc6-dev-armel-cross
+                DEBIAN_FRONTEND=noninteractive apt-get install --force-yes -y libpcre3-dev || DEBIAN_FRONTEND=noninteractive apt-get install --force-yes -y libpcre2-dev
+                ;;
+              fedora*)
+                dnf -y update
+                dnf -y install git which
+                ;;
+              alpine*)
+                apk update
+                apk add git
+                ;;
+            esac
+
+          # Produce a binary artifact
+          run: |
+            git config --global --add safe.directory /home/runner/work/tvheadend/tvheadend || true
+            AUTOBUILD_CONFIGURE_EXTRA=--enable-ccache\ --enable-ffmpeg_static\ --enable-hdhomerun_static\ --python=python3 ./Autobuild.sh
+            cp ../tvheadend*.deb /artifacts/
+            if [ '${{ matrix.distro }}' = 'buster' ] && [ '${{ matrix.arch }}' = 'armv7' ]; then update-ca-certificates --fresh; fi
+
+      - name: upload tvheadend*.deb to artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tvheadend-${{ matrix.distro }}-${{ matrix.arch }}
+          path: artifacts/tvheadend*.deb
+          if-no-files-found: error
+
+      - name: release tag
+        id: releasetag
+        run: |
+          echo "build_tag=$(ls /artifacts/tvheadend*.deb | tail -1 | cut -d '_' -f2 | cut -d '~' -f1-2 | sed 's/~/-/g'))" >> ${GITHUB_OUTPUT}
+
+      - name: upload tvheadend*.deb to release
+        uses: ncipollo/release-action@main
+        with:
+          tag: ${{ steps.releasetag.outputs.build_tag }}
+          artifacts: artifacts/tvheadend*.deb
+          allowUpdates: true
+          removeArtifacts: false
+          replacesArtifacts: true
+          token: ${{ secrets.GITHUB_TOKEN }}
