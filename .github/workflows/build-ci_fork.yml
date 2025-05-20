@@ -1,6 +1,12 @@
 name: Build Tvheadend CI Fork
 
 on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
   workflow_dispatch:
 
 concurrency:
