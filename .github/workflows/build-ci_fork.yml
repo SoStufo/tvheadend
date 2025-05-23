@@ -1,10 +1,13 @@
 name: Build Tvheadend CI Fork
 
 on:
-  push:
+  pull_request:
+    types: 
+      - closed
+      - auto_merge_enabled
     branches:
       - master
-  pull_request:
+  push:
     branches:
       - master
   workflow_dispatch:
