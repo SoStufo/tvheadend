@@ -131,13 +131,15 @@ channel_class_autoname_set ( void *obj, const void *p )
 {
   channel_t *ch = (channel_t *)obj;
   const char *s;
+  char *chan_name;
   int b = *(int *)p;
   if (ch->ch_autoname != b) {
     if (b == 0 && tvh_str_default(ch->ch_name, NULL) == NULL) {
       s = channel_get_name(ch, NULL);
       if (s) {
+        chan_name = strdup(s);
         free(ch->ch_name);
-        ch->ch_name = strdup(s);
+        ch->ch_name = chan_name;
       } else {
         return 0;
       }
@@ -542,16 +544,6 @@ const idclass_t channel_class = {
       .list     = channel_class_epg_running_list,
       .opts     = PO_EXPERT | PO_DOC_NLIST,
     },
-#if ENABLE_TIMESHIFT
-    {
-      .type     = PT_BOOL,
-      .id       = "remote_timeshift",
-      .name     = N_("Remote timeshift"),
-      .desc     = N_("Pass timeshift commands to a remote RTSP server"),
-      .off      = offsetof(channel_t, ch_remote_timeshift),
-      .opts     = PO_ADVANCED,
-    },
-#endif
     {
       .type     = PT_STR,
       .islist   = 1,

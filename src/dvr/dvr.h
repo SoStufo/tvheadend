@@ -115,6 +115,7 @@ typedef struct dvr_config {
   int dvr_episode_in_title;
   int dvr_clean_title;
   int dvr_tag_files;
+  int dvr_create_scene_markers;
   int dvr_skip_commercials;
   int dvr_subtitle_in_title;
   int dvr_windows_compatible_filenames;
@@ -391,6 +392,7 @@ typedef struct dvr_autorec_entry {
   char *dae_title;
   tvh_regex_t dae_title_regex;
   int dae_fulltext;
+  int dae_mergetext;
 
   uint32_t dae_content_type;
   /* These categories (mainly from xmltv) such as Cooking, Dog racing, Movie.
@@ -636,6 +638,8 @@ dvr_entry_t *dvr_entry_find_by_event_fuzzy(epg_broadcast_t *e);
 const char *dvr_get_filename(dvr_entry_t *de);
 
 int64_t dvr_get_filesize(dvr_entry_t *de, int flags);
+
+int dvr_get_files_details(dvr_entry_t *de, time_t *files_start, time_t *files_stop, int *files_count);
 
 int64_t dvr_entry_claenup(dvr_entry_t *de, int64_t requiredBytes);
 
@@ -883,6 +887,7 @@ void dvr_entry_trace_time2_(const char *file, int line,
  *
  */
 
+void dvr_create_recording_scene_markers(dvr_entry_t *de);
 void dvr_init(void);
 void dvr_config_init(void);
 

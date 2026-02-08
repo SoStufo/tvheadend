@@ -517,11 +517,11 @@ config_migrate_v2 ( void )
     htsmsg_destroy(m);
 
     /* Move muxes */
-    hts_settings_buildpath(src, sizeof(src),
-                           "input/iptv/muxes");
-    hts_settings_buildpath(dst, sizeof(dst),
-                           "input/iptv/networks/%s/muxes", ubuf);
-    rename(src, dst);
+    if (!hts_settings_buildpath(src, sizeof(src),
+                                "input/iptv/muxes") &&
+        !hts_settings_buildpath(dst, sizeof(dst),
+                                "input/iptv/networks/%s/muxes", ubuf))
+      rename(src, dst);
   }
 }
 
@@ -534,14 +534,16 @@ config_migrate_v3 ( void )
   char src[1024], dst[1024];
 
   /* Due to having to potentially run this twice! */
-  hts_settings_buildpath(dst, sizeof(dst), "input/dvb/networks");
+  if (hts_settings_buildpath(dst, sizeof(dst), "input/dvb/networks"))
+    return;
   if (!access(dst, R_OK | W_OK))
     return;
 
   if (hts_settings_makedirs(dst))
     return;
 
-  hts_settings_buildpath(src, sizeof(src), "input/linuxdvb/networks");
+  if (hts_settings_buildpath(src, sizeof(src), "input/linuxdvb/networks"))
+    return;
   rename(src, dst);
 }
 
@@ -1822,7 +1824,8 @@ config_boot
   hts_settings_init(config.confdir);
 
   /* Lock it */
-  hts_settings_buildpath(config_lock, sizeof(config_lock), ".lock");
+  if (hts_settings_buildpath(config_lock, sizeof(config_lock), ".lock"))
+    exit(78); /* config error */
   if ((config_lock_fd = file_lock(config_lock, 3)) < 0)
     exit(78); /* config error */
 
@@ -2562,7 +2565,7 @@ const idclass_t config_class = {
       .id     = "hdhomerun_ip",
       .name   = N_("HDHomerun IP Address"),
       .desc   = N_("IP address of the HDHomerun device. This is needed if you "
-                   "plan to run TVheadend in a container and you want to stream "
+                   "plan to run Tvheadend in a container and you want to stream "
                    "from an HDHomerun without enabling host networking for "
                    "the container."),
       .off    = offsetof(config_t, hdhomerun_ip),
@@ -2574,9 +2577,9 @@ const idclass_t config_class = {
       .id     = "local_ip",
       .name   = N_("Local IP Address"),
       .desc   = N_("IP of the Docker host. Each HDHomeRun tuner sends data "
-                   "to TVheadend through a socket. This lets you define the "
+                   "to Tvheadend through a socket. This lets you define the "
                    "IP address that HDHomeRun needs to send to. Leave this "
-                   "blank if you want TVheadend to automatically pick an "
+                   "blank if you want Tvheadend to automatically pick an "
                    "address."),
       .off    = offsetof(config_t, local_ip),
       .opts   = PO_HIDDEN | PO_EXPERT,
@@ -2588,7 +2591,7 @@ const idclass_t config_class = {
       .name   = N_("Local Socket Port Number"),
       .desc   = N_("Starting port number of the UDP listeners. The listeners "
                    "listen for traffic from the HDHomerun tuners. This is "
-                   "needed if you plan to run TVheadend in a container and "
+                   "needed if you plan to run Tvheadend in a container and "
                    "you want to stream from an HDHomerun without enabling "
                    "host networking for the container. Set this to 0 if you "
                    "want the port numbers to be assigned dynamically. If you "
@@ -2739,6 +2742,17 @@ const idclass_t config_class = {
                    "(before frame start is signalled in the stream). "
                    "It may cause issues with some clients / players."),
       .off    = offsetof(config_t, parser_backlog),
+      .opts   = PO_EXPERT,
+      .group  = 8,
+    },
+    {
+      .type   = PT_BOOL,
+      .id     = "auto_clear_input_counters",
+      .name   = N_("Automatically clear input error counters"),
+      .desc   = N_("Periodically resets input error counters "
+                   "(when a new mux starts for the target tuner). "
+                   "Note that previous counters will be lost."),
+      .off    = offsetof(config_t, auto_clear_input_counters),
       .opts   = PO_EXPERT,
       .group  = 8,
     },

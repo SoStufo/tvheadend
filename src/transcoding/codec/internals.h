@@ -79,44 +79,114 @@
     _tvh_codec_getattr(c, a, AVMEDIA_TYPE_AUDIO, TVHAudioCodec)
 
 
-#define AV_DICT_SET(d, k, v, f) \
+#define tvhdebug_transcode(s, ...) \
     do { \
-        if (av_dict_set((d), (k), (v), (f)) < 0) { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvhdebug( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define tvhinfo_transcode(s, ...) \
+    do { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvhinfo( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define tvhwarn_transcode(s, ...) \
+    do { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvhwarn( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define tvhnotice_transcode(s, ...) \
+    do { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvhnotice( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define tvherror_transcode(s, ...) \
+    do { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvherror( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define tvhalert_transcode(s, ...) \
+    do { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvhalert( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define tvhtrace_transcode(s, ...) \
+    do { \
+        char log_out[SUB_SYSTEM_TRANSCODE_LOG_LENGTH_MAX]; \
+        tvh_concatenate_subsystem_with_logs(log_out, (s), ##__VA_ARGS__); \
+        tvhtrace( LS_TRANSCODE, "%s", log_out); \
+    } while (0)
+
+#define AV_DICT_SET(s, d, k, v, f) \
+    do { \
+        int ret = av_dict_set((d), (k), (v), (f)); \
+        if (ret < 0) { \
+            tvherror_transcode((s), "Unable to write key '%s' with value '%s' due to error '%s'" , (k), (v), av_err2str((ret)));\
             return -1; \
         } \
     } while (0)
 
-#define AV_DICT_SET_INT(d, k, v, f) \
+#define AV_DICT_SET_INT(s, d, k, v, f) \
     do { \
-        if (av_dict_set_int((d), (k), (v), (f)) < 0) { \
+        int ret = av_dict_set_int((d), (k), (int64_t)(v), (f)); \
+        if (ret < 0) { \
+            tvherror_transcode((s), "Unable to write key '%s' with value %"PRId64" due to error '%s'" , (k), (int64_t)(v), av_err2str((ret)));\
             return -1; \
         } \
     } while (0)
 
-#define AV_DICT_SET_TVH_REQUIRE_META(d, v) \
-    AV_DICT_SET_INT((d), "tvh_require_meta", (v), AV_DICT_DONT_OVERWRITE)
+#define AV_DICT_SET_TVH_REQUIRE_META(s, d, v) \
+    AV_DICT_SET_INT((s), (d), "tvh_require_meta", (v), AV_DICT_DONT_OVERWRITE)
 
-#define AV_DICT_SET_FLAGS(d, v) \
-    AV_DICT_SET((d), "flags", (v), AV_DICT_APPEND)
+#define AV_DICT_SET_FLAGS(s, d, v) \
+    AV_DICT_SET((s), (d), "flags", (v), AV_DICT_APPEND)
 
-#define AV_DICT_SET_FLAGS_GLOBAL_HEADER(d) \
-    AV_DICT_SET_FLAGS((d), "+global_header")
+#define AV_DICT_SET_FLAGS_GLOBAL_HEADER(s, d) \
+    AV_DICT_SET_FLAGS((s), (d), "+global_header")
 
-#define AV_DICT_SET_BIT_RATE(d, v) \
-    AV_DICT_SET_INT((d), "b", (v) * 1000, AV_DICT_DONT_OVERWRITE)
+// Defines the maximum bitrate value to avoid exceeding int64_t limits after multiplication
+#define BITRATE_MAX ((double)((1ULL) << 53))
 
-#define AV_DICT_SET_GLOBAL_QUALITY(d, v, a) \
+#define AV_DICT_SET_BIT_RATE(s, d, v) \
     do { \
-        AV_DICT_SET_FLAGS((d), "+qscale"); \
-        AV_DICT_SET_INT((d), "global_quality", ((v) ? (v) : (a)) * FF_QP2LAMBDA, \
-                        AV_DICT_DONT_OVERWRITE); \
+        int64_t bitrate = 0; \
+        if ((v) <= BITRATE_MAX && (v) >= 0.0) \
+            bitrate = (int64_t)((v) * 1000.0); \
+        else \
+            tvherror_transcode((s), "bitrate value too large to fit in int64_t: %g or negative", (v) * 1000.0); \
+        AV_DICT_SET_INT((s), (d), "b", bitrate, AV_DICT_DONT_OVERWRITE); \
     } while (0)
 
-#define AV_DICT_SET_CRF(d, v, a) \
-    AV_DICT_SET_INT((d), "crf", (v) ? (v) : (a), AV_DICT_DONT_OVERWRITE)
+// Defines the maximum global quality value to avoid exceeding int64_t limits after multiplication
+#define GLOBAL_QUALITY_MAX ((double)((1ULL) << 56))
 
-#define AV_DICT_SET_PIX_FMT(d, v, a) \
-    AV_DICT_SET_INT((d), "pix_fmt", ((v) != AV_PIX_FMT_NONE) ? (v) : (a), \
+#define AV_DICT_SET_GLOBAL_QUALITY(s, d, v, a) \
+    do { \
+        AV_DICT_SET_FLAGS((s), (d), "+qscale"); \
+        int64_t global_quality = 0; \
+        if (((v) <= GLOBAL_QUALITY_MAX && (v) > 0.0) || ((v) == 0.0 && (a) <= GLOBAL_QUALITY_MAX)) \
+            global_quality = (int64_t)(((v) ? (v) : (a)) * FF_QP2LAMBDA); \
+        else \
+            tvherror_transcode((s), "global_quality value too large to fit in int64_t: %g", ((v) ? (v) : (a)) * FF_QP2LAMBDA); \
+        AV_DICT_SET_INT((s), (d), "global_quality", global_quality, AV_DICT_DONT_OVERWRITE); \
+    } while (0)
+
+#define AV_DICT_SET_CRF(s, d, v, a) \
+    AV_DICT_SET_INT((s), (d), "crf", (v) ? (v) : (a), AV_DICT_DONT_OVERWRITE)
+
+#define AV_DICT_SET_PIX_FMT(s, d, v, a) \
+    AV_DICT_SET_INT((s), (d), "pix_fmt", ((v) != AV_PIX_FMT_NONE) ? (v) : (a), \
                     AV_DICT_DONT_OVERWRITE)
 
 #define HWACCEL_AUTO        0
@@ -129,6 +199,19 @@
 #if ENABLE_MMAL
 #define HWACCEL_PRIORITIZE_MMAL  3
 #endif
+
+#define DEINT_RATE_FRAME         0
+#define DEINT_RATE_FIELD         1
+
+#define DEINT_AUTO_OFF           0
+#define DEINT_AUTO_ON            1
+
+#define VAAPI_DEINT_MODE_DEFAULT 0
+#define VAAPI_DEINT_MODE_BOB     1
+#define VAAPI_DEINT_MODE_WEAVE   2
+#define VAAPI_DEINT_MODE_MADI    3
+#define VAAPI_DEINT_MODE_MCDI    4
+
 
 /* codec_profile_class ====================================================== */
 
@@ -290,16 +373,181 @@ extern const codec_profile_class_t codec_profile_video_class;
 
 typedef struct tvh_codec_profile_video {
     TVHCodecProfile;
+    /**
+     * SW or HW deinterlace  (applies for decoding)
+     * @note
+     * int: 
+     * VALUE - deinterlace enable
+     * 
+     * - 0 - disabled
+     * 
+     * - 1 - enabled
+     */
     int deinterlace;
+
+    /**
+     * SW or HW deinterlace enable field rate (applies to deinterlace filters)
+     * @note
+     * int:
+     * - 0 - Output at frame rate (one frame of output for each field-pair)
+     * - 1 - Output at field rate (one frame of output for each field)
+     */
+    int deinterlace_field_rate;
+
+    /**
+     * SW or HW deinterlace 'auto' mode (applies to deinterlace filters)
+     * @note
+     * int:
+     * - 0 - Disabled (deinterlace all content, including progressive frames)
+     * - 1 - Enabled (only deinterlace interlaced fields; progressive frames are passed through unchanged)
+     */
+    int deinterlace_enable_auto;
+
+    /**
+     * VAAPI Deinterlace mode [deinterlace_vaapi mode parameter]
+     * https://ffmpeg.org/doxygen/6.1/vf__deinterlace__vaapi_8c.html
+     * @note
+     * int:
+     * 0 - Default: Use the highest-numbered (and therefore most advanced) deinterlacing algorithm
+     * 1 - Use the bob deinterlacing algorithm
+     * 2 - Use the weave deinterlacing algorithm
+     * 3 - Use the motion adaptive deinterlacing algorithm
+     * 4 - Use the motion compensated deinterlacing algorithm
+     */
+    int deinterlace_vaapi_mode;
+
     int height;
-    int scaling_mode;   // 0 --> up&down; 1 --> up; 2 --> down
+    /**
+     * SW or HW scaling mode  (applies for decoding)
+     * @note
+     * int: 
+     * VALUE - scaling mode
+     * 
+     * - 0 - scaling up or down
+     * 
+     * - 1 - scaling only up
+     * 
+     * - 2 - scaling only down
+     */
+    int scaling_mode;
+    /**
+     * SW or HW gop size  (applies for encoding)
+     * @note
+     * int: 
+     * VALUE - gop size
+     * 
+     * - 0 - default gop size (3 sec)
+     * 
+     * - 1 --> 1000 - gop size in frames
+     */
+    int gop_size;
     int hwaccel;
     int hwaccel_details;
     int pix_fmt;
     int crf;
+#if ENABLE_HWACCELS
+    /**
+     * HW accel denoise filter (applies for decoding)
+     * @note
+     * int: 
+     * VALUE - hardware denoise
+     * 
+     * - 0 - disabled (not sent to ffmpeg)
+     * 
+     * - >0 - denoise level value (max value different per platform)
+     */
+    int filter_hw_denoise;
+    /**
+     * HW accel sharpness filter (applies for decoding)
+     * @note
+     * int: 
+     * VALUE - hardware sharpness
+     * 
+     * - 0 - disabled (not sent to ffmpeg)
+     * 
+     * - >0 - sharpness level value (max value different per platform)
+     */
+    int filter_hw_sharpness;
+#endif
     AVRational size;
 } TVHVideoCodecProfile;
 
+typedef struct {
+    TVHVideoCodecProfile;
+    int qp;
+    int quality;
+    int global_quality;
+    int async_depth;
+/**
+ * VAAPI Encoder availablity.
+ * @note
+ * return:
+ * bit0 - will show if normal encoder is available (VAEntrypointEncSlice)
+ */
+    int ui;
+/**
+ * VAAPI Encoder Low power availablity.
+ * @note
+ * return:
+ * bit0 - will show if low power encoder is available (VAEntrypointEncSliceLP)
+ */
+    int uilp;
+/**
+ * VAAPI Frame used as reference for B-frame [b_depth]
+ * https://www.ffmpeg.org/ffmpeg-codecs.html#toc-VAAPI-encoders
+ * @note
+ * int:
+ * 0 - skip
+ * 1 - all B-frames will refer only to P- or I-frames
+ * 2 - multiple layers of B-frames will be present
+ */
+    int b_reference;
+/**
+ * VAAPI Maximum consecutive B-frame [bf]
+ * https://www.ffmpeg.org/ffmpeg-codecs.html#toc-VAAPI-encoders
+ * @note
+ * int:
+ * 0 - no B-Frames allowed
+ * >0 - number of consecutive B-frames (valid with b_reference = 1 --> "use P- or I-frames")
+ */
+    int desired_b_depth;
+/**
+ * VAAPI Maximum bitrate [maxrate]
+ * https://www.ffmpeg.org/ffmpeg-codecs.html#toc-VAAPI-encoders
+ * @note
+ * int:
+ * VALUE - max bitrate in bps
+ */
+    double max_bit_rate;
+/**
+ * VAAPI Maximum bitrate [maxrate]
+ * https://www.ffmpeg.org/ffmpeg-codecs.html#toc-VAAPI-encoders
+ * @note
+ * double:
+ * VALUE - max bitrate in bps
+ */
+    double bit_rate_scale_factor;
+/**
+ * VAAPI Platform hardware [not ffmpeg parameter]
+ * https://www.ffmpeg.org/ffmpeg-codecs.html#toc-VAAPI-encoders
+ * @note
+ * int:
+ * 0 - Unconstrained (useful for debug)
+ * 1 - Intel
+ * 2 - AMD
+ */
+    int platform;
+
+    int loop_filter_level;
+    int loop_filter_sharpness;
+    double buff_factor;
+    int rc_mode;
+    int tier;
+    int level;
+    int qmin;
+    int qmax;
+    int super_frame;
+} tvh_codec_profile_vaapi_t;
 
 /* audio */
 
